@@ -12,4 +12,6 @@ This is a secondary development based on the large constant polarisation camera 
 ### Main technology
 * Using CUDA to solve mosaic images, real-time solution display can be achieved.
 * With multi-threading, pictures can be displayed and saved at the same time.
-
+---
+### Contact
+If you have any questions, please contact me at my email 907151833@qq.com.
