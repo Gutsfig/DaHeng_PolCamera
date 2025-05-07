@@ -1,5 +1,5 @@
 # DaHeng_PolCamera
-![图片描述](https://github.com//Gutsfig/DaHeng_PolCamera/main/IMG/1746620104091.jpg)
+![图片描述](https://github.com//Gutsfig/DaHeng_PolCamera/IMG/1746620104091.jpg)
 ---
 ## introduce
 This is a secondary development based on the large constant polarisation camera (MER2-502-79U3M POL) SDK, the main functions are real-time display I0, I45, I90, I35, S0, S1, S2, DoLP, AoLP, and real-time saving function.
