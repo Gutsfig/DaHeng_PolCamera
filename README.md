@@ -7,6 +7,7 @@ This is a secondary development based on the large constant polarisation camera 
 * opencv4.7
 * cuda11.8
 * GalaxySDK
+* UTF-8
 ### Main technology
 * Using CUDA to solve mosaic images, real-time solution display can be achieved.
 * With multi-threading, pictures can be displayed and saved at the same time.
