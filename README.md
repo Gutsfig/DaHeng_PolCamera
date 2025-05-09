@@ -5,7 +5,7 @@ This is a secondary development based on the polarisation camera (MER2-502-79U3M
 ---
 ### Development environment
 * MSCV2019
-* opencv4.7
+* opencv4.9
 * cuda11.8
 * GalaxySDK
 * UTF-8

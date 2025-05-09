@@ -7,8 +7,7 @@ set(CMAKE_CUDA_ARCHITECTURES 89;86)
 # set(XXX_ROOT "              ")
 set(CMAKE_CUDA_COMPILER "${CUDA_TOOLKIT_ROOT_DIR}/bin/nvcc.exe")
 set(CUDA_TOOLKIT_ROOT_DIR "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8")
-set(OpenCV_DIR "D:/Tools/opencv470/opencv-4.7.0/build")
-
+set(OpenCV_DIR "D:/Tools/opencv4.9/opencv/build")
 #-------------------------------------------------------------------------------
 # File organization
 #-------------------------------------------------------------------------------
@@ -34,7 +33,7 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/build/)
 #-------------------------------------------------------------------------------
 link_directories(
     ${TENSORRT_LIB_DIR}
-    "${OpenCV_DIR}/install/x64/vc16/lib"  # OpenCV 库路径
+    "${OpenCV_DIR}/x64/vc16/lib"  # OpenCV 库路径
 )
 #-------------------------------------------------------------------------------
 
@@ -48,7 +47,7 @@ find_package(OpenCV REQUIRED COMPONENTS
     core 
     imgproc 
     highgui 
-    cudaimgproc
+    #cudaimgproc
 )
 
 # Windows-specific libraries
@@ -70,9 +69,9 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CUDAToolkit_INCLUDE_DIRS}
     ${PROJECT_SOURCE_DIR}/include 
     ${TENSORRT_INCLUDE_DIR}
-    "D:/Tools/opencv470/opencv-4.7.0/build/install/include"
+    "D:\\Tools\\opencv4.9\\opencv\\build\\include\\opencv2"
     "D:\\Tools\\camera\\Galaxy\\GalaxySDK\\Development\\C++ SDK\\inc"
-    "C:\\Tools\\camera\\Galaxy\\GalaxySDK\\Development\\VC SDK\\inc"
+    "D:\\Tools\\camera\\Galaxy\\GalaxySDK\\Development\\VC SDK\\inc"
 )
 target_link_libraries(${PROJECT_NAME} PRIVATE
     CUDA::cublas
@@ -83,8 +82,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ${OpenCV_LIBS}
     ${WIN_LIBS}
     # Specific OpenCV libraries (adjust paths as needed)
-    "D:/Tools/opencv470/opencv-4.7.0/build/install/x64/vc16/lib/opencv_img_hash470.lib"
-    "D:/Tools/opencv470/opencv-4.7.0/build/install/x64/vc16/lib/opencv_world470.lib"
+    #"D:/Tools/opencv470/opencv-4.7.0/build/install/x64/vc16/lib/opencv_img_hash470.lib"
+    "D:\\Tools\\opencv4.9\\opencv\\build\\x64\\vc16\\lib\\opencv_world490.lib"
     "D:\\Tools\\camera\\Galaxy\\GalaxySDK\\Development\\C++ SDK\\lib\\x64\\GxIAPICPPEx.lib"
 )
 #---------------------------------------------------------------------
