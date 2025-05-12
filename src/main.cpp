@@ -28,7 +28,9 @@ ThreadSafeMatQueue ProcessedImageQueue_AoLP;
 ThreadSafeMatQueue ProcessedImageQueue_DoLP;
 ThreadSafeMatQueue ProcessedImageQueue_I90;
 ThreadSafeMatQueue ProcessedImageQueue_S0;
+ThreadSafeMatQueue ProcessedImageQueue_DoFP;
 cv::Mat VisdisplayFrame;
+cv::Mat VisdisplayFrame_DoFP;
 // cv::Mat inputname;
 // cv::Mat SaveVisdisplayFrame;
 // 全局计数器，用于给帧命名
@@ -187,14 +189,17 @@ void VISdisplayThread() {
     std::string VISwindowName_I90 = "I90";
     std::string VISwindowName_S0 = "S0";
     std::string VISwindowName_AoLP = "AoLP";
+    std::string VISwindowName_DoFP = "DoFP";
     cv::namedWindow("I90", cv::WINDOW_NORMAL);
     cv::namedWindow("DoLP", cv::WINDOW_NORMAL);
     cv::namedWindow("AoLP", cv::WINDOW_NORMAL);
     cv::namedWindow("S0", cv::WINDOW_NORMAL);
-    cv::resizeWindow("I90", 640, 480);
-    cv::resizeWindow("DoLP", 640, 480);
-    cv::resizeWindow("AoLP", 640, 480);
-    cv::resizeWindow("S0", 640, 480);
+    cv::namedWindow("DoFP", cv::WINDOW_NORMAL);
+    cv::resizeWindow("I90", 320, 240);
+    cv::resizeWindow("DoLP", 320, 240);
+    cv::resizeWindow("AoLP", 320, 240);
+    cv::resizeWindow("S0", 320, 240);
+    cv::resizeWindow("DoFP", 320, 240);
 	cv::Mat i0, i45, i90, i135,s0,s1,s2, dolp, aolp; // Add dolp, aolp
 	cv::Mat i0_display, i45_display, i90_display, i135_display, s0_display,s1_display,s2_display,dolp_display;
 	cv::Mat aolp_display_hsv;
@@ -209,7 +214,13 @@ void VISdisplayThread() {
         else{                        
             // 转换为 OpenCV Mat
 			VisdisplayFrame = cv::Mat(height, width, CV_8U, pVISBuffer); // 处理后的图像是单通道的
-			bool success = Bilinear_Interpolation_And_Polarization_CUDA(VisdisplayFrame, i0, i45, i90, i135,s0,s1,s2, dolp, aolp);
+            
+            //深拷贝   
+            VisdisplayFrame_DoFP= cv::Mat(height, width, CV_8U, pVISBuffer);
+            ProcessedImageQueue_DoFP.push(VisdisplayFrame_DoFP.clone());
+
+            bool success = Bilinear_Interpolation_And_Polarization_CUDA(VisdisplayFrame, i0, i45, i90, i135,s0,s1,s2, dolp, aolp);
+			
             cv::normalize(dolp, dolp_display, 0, 255, cv::NORM_MINMAX, CV_8U);
 			cv::normalize(i90, i90_display, 0, 255, cv::NORM_MINMAX, CV_8U);
             cv::normalize(s0, s0_display, 0, 255, cv::NORM_MINMAX, CV_8U);
@@ -242,6 +253,9 @@ void VISdisplayThread() {
             //显示S0
             cv::putText(s0_display, fpsText, cv::Point(10, 130), cv::FONT_HERSHEY_SIMPLEX, 3, cv::Scalar(0, 0, 255), 10); 
             cv::imshow(VISwindowName_S0, s0_display);
+            //显示DoFP
+            cv::putText(VisdisplayFrame_DoFP, fpsText, cv::Point(10, 130), cv::FONT_HERSHEY_SIMPLEX, 3, cv::Scalar(0, 0, 255), 10); 
+            cv::imshow(VISwindowName_DoFP, VisdisplayFrame_DoFP);
             keyListener();
             // 显示完毕清除缓存
         }
@@ -255,7 +269,14 @@ void VISdisplayThread() {
 /*---------------------- 清除缓存 -----------------------------*/
 void CleanupSession() {
     // 通知显示线程退出并等待
+    Capture_Flag = false;  
     VisimageQuene.push(nullptr, 0, 0, 0); 
+    SaveVisimageQuene.push(nullptr, 0, 0, 0);
+    ProcessedImageQueue_AoLP.push(cv::Mat());
+    ProcessedImageQueue_DoLP.push(cv::Mat());
+    ProcessedImageQueue_I90.push(cv::Mat());
+    ProcessedImageQueue_S0.push(cv::Mat());
+    ProcessedImageQueue_DoFP.push(cv::Mat());
     
     if (pVISBuffer != nullptr) free(pVISBuffer);
     cv::destroyAllWindows();
@@ -276,7 +297,7 @@ void keyListener() {
 
 /*---------------------- Saving Frame -----------------------------*/
 void FrameStore() {
-    int saveInterval = 5;  // 每隔 5 帧保存 1 帧
+    int saveInterval = 2;  // 每隔 2 帧保存 1 帧
     int frameCounter = 0;  // 当前帧计数
 
     while (Capture_Flag) {
@@ -284,6 +305,7 @@ void FrameStore() {
         frameCounter++;
 
         // 取出处理后的图像
+        cv::Mat processedImag_DoFP = ProcessedImageQueue_DoFP.pop();
         cv::Mat processedImag_I90 = ProcessedImageQueue_I90.pop();
         cv::Mat processedImag_DoLP = ProcessedImageQueue_DoLP.pop();
         cv::Mat processedImag_AoLP = ProcessedImageQueue_AoLP.pop();
@@ -291,20 +313,21 @@ void FrameStore() {
 
         // 如果达到保存间隔，才保存
         if (frameCounter % saveInterval == 0) {
-            std::string filename_90 = "D:/image/caiji/I90/" + std::to_string(VISframeCount) + ".png";
+            std::string filename_90 = "D:/image/caiji/I90/" + std::to_string(VISframeCount) + ".bmp";
             cv::imwrite(filename_90, processedImag_I90);
-            std::string filename_dolp = "D:/image/caiji/DoLP/" + std::to_string(VISframeCount) + ".png";
+            std::string filename_dolp = "D:/image/caiji/DoLP/" + std::to_string(VISframeCount) + ".bmp";
             cv::imwrite(filename_dolp, processedImag_DoLP);
-            std::string filename_aolp = "D:/image/caiji/AoLP/" + std::to_string(VISframeCount) + ".png";
+            std::string filename_aolp = "D:/image/caiji/AoLP/" + std::to_string(VISframeCount) + ".bmp";
             cv::imwrite(filename_aolp, processedImag_AoLP);
-            std::string filename_s0 = "D:/image/caiji/S0/" + std::to_string(VISframeCount) + ".png";
+            std::string filename_s0 = "D:/image/caiji/S0/" + std::to_string(VISframeCount) + ".bmp";
             cv::imwrite(filename_s0, processedImag_S0);
+            std::string filename_dofp = "D:/image/caiji/DoFP/" + std::to_string(VISframeCount) + ".bmp";
+            cv::imwrite(filename_dofp, processedImag_DoFP);
         }
     }
 }
 
 /*---------------------- Saving Frame -----------------------------*/
-
 
 
 
