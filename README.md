@@ -1,5 +1,5 @@
 # DaHeng_PolCamera
-![MyPicture](https://raw.githubusercontent.com/Gutsfig/DaHeng_PolCamera/main/IMG/1746620104091.jpg)
+![MyPicture](https://raw.githubusercontent.com/Gutsfig/DaHeng_PolCamera/main/IMG/xiangji.vsdx)
 ## Introduce
 This is a secondary development based on the polarisation camera (MER2-502-79U3M POL), the main functions are real-time display I0, I45, I90, I35, S0, S1, S2, DoLP, AoLP, and real-time saving function.
 ---
@@ -15,3 +15,4 @@ This is a secondary development based on the polarisation camera (MER2-502-79U3M
 ---
 ### Contact
 If you have any questions, please contact me at my email 907151833@qq.com.
+
