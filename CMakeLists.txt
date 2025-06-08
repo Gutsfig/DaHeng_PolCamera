@@ -27,11 +27,6 @@ find_package(OpenCV REQUIRED COMPONENTS
 set(SOURCES  
     src/main.cpp
     src/ThreadSafeQuene.cpp
-    # src/cuda_utils/bilinear.cu
-    # src/cuda_utils/normalize_gpu.cu
-    # src/cuda_utils/custom_polarization_cuda.cu
-    # src/cuda_utils/polarization_kernels.cu
-    # src/cuda_utils/hsv_fusion_cuda.cu
 )
 #-------------------------------------------------------------------------------
 # Executable target
