@@ -1,5 +1,7 @@
 # DaHeng_PolCamera
 ![MyPicture](https://raw.githubusercontent.com/Gutsfig/DaHeng_PolCamera/main/img/xiangji.jpg)
+<div style="text-align: center; font-weight: bold;">Overall Flowchart</div>
+
 ## Introduce
 This is a secondary development based on the polarisation camera (MER2-502-79U3M POL), the main functions are real-time display I0, I45, I90, I35, S0, S1, S2, DoLP, AoLP, and real-time saving function.
 ---
@@ -10,6 +12,8 @@ This is a secondary development based on the polarisation camera (MER2-502-79U3M
 * GalaxySDK
 * UTF-8
 * Windows
+* 4070 Laptop GPU
+* i7-12800HX
 ### Main technology
 * Using CUDA to solve mosaic images, real-time solution display can be achieved.
 * With multi-threading, pictures can be displayed and saved at the same time.
