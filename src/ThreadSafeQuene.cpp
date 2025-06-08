@@ -17,14 +17,26 @@ std::tuple<unsigned char*, int, int, int> ThreadSafeQueue::pop() {
     return item;//返回获取的图像数据及其相关信息，作为一个元组。
 }
 
+// const size_t MAX_CAMERA_QUEUE_SIZE = 5; // 例如，最多缓存5帧来自相机的数据
+const size_t MAX_CAMERA_QUEUE_SIZE = 8; // 例如，最多缓存5帧来自相机的数据
 
 // 新增：ThreadSafeMatQueue 的实现
-void ThreadSafeMatQueue::push(const cv::Mat& mat) {
+// void ThreadSafeMatQueue::push(const cv::Mat& mat) {
+//     std::lock_guard<std::mutex> lock(mtx);
+//     buffer.push(mat.clone());  // 存储副本，避免数据竞争
+//     cvar.notify_one();         // 通知等待的线程
+// }
+void ThreadSafeMatQueue::push(const cv::Mat& mat) { // VisimageQuene_A 使用这个
     std::lock_guard<std::mutex> lock(mtx);
-    buffer.push(mat.clone());  // 存储副本，避免数据竞争
-    cvar.notify_one();         // 通知等待的线程
+    if (buffer.size() >= MAX_CAMERA_QUEUE_SIZE) {
+        // 当队列满时，丢弃最旧的帧以腾出空间给最新的帧
+        // 这对于实时视觉系统是常见的策略，以保证显示的数据尽可能“新”
+        // printf("VisimageQuene_A 已满，丢弃旧帧。\n"); // 调试信息
+        buffer.pop(); // 移除队首（最旧的）元素
+    }
+    buffer.push(mat.clone());  // 存储副本
+    cvar.notify_one();
 }
-
 cv::Mat ThreadSafeMatQueue::pop() {
     std::unique_lock<std::mutex> lock(mtx);
     cvar.wait(lock, [this] { return !buffer.empty(); });  // 等待队列非空

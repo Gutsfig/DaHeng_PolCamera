@@ -1,168 +1,157 @@
-#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <iostream>
 #include <thread>
 #include <opencv2/opencv.hpp> // 引入OpenCV头文件
 #include "ThreadSafeQuene.h"
 #include "GalaxyIncludes.h" //大恒头文件
-#include"bilinear.h" //双线性插值头文件
+#include"polarization_kernels.h" //偏振核函数头文件
+#include "CudaImageUtils.h"
+
 //定义全局变量
 bool Capture_Flag = true;  //控制线程的标志
-// int IRdeviceID = 0;
 int visdeviceID = 0;
 int channels = 1; 
 
-#define AE_Time_INIT 300 //初始曝光时长
-#define AE_Time_MAX 60000 //最大曝光时长
+//定义参数(调节曝光时间和增益)
+#define AE_Time_MAX 10000 //最大曝光时长
 #define INIT_GAIN 10.0f //初始增益
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
+// int Width = 2448; // 可见光宽度
+// int Height = 2048;// 可见光高度
+//控制器全局声明
+CGXFeatureControlPointer ObjFeatureControlPtr;
+CGXStreamPointer ObjStreamPtr;
+ICaptureEventHandler* pCaptureEventHandler = NULL; 
+CGXDevicePointer ObjDevicePtr;
 
-void* pRaw8Buffer = nullptr;     
-unsigned char* pVISBuffer = nullptr;    
 
-// 创建全局队列实例
-ThreadSafeQueue VisimageQuene; // 可见光摄像头采集图像队列
-ThreadSafeQueue SaveVisimageQuene;
-ThreadSafeMatQueue ProcessedImageQueue_AoLP;
-ThreadSafeMatQueue ProcessedImageQueue_DoLP;
-ThreadSafeMatQueue ProcessedImageQueue_I90;
-ThreadSafeMatQueue ProcessedImageQueue_S0;
-ThreadSafeMatQueue ProcessedImageQueue_DoFP;
-cv::Mat VisdisplayFrame;
-cv::Mat VisdisplayFrame_DoFP;
-// cv::Mat inputname;
-// cv::Mat SaveVisdisplayFrame;
-// 全局计数器，用于给帧命名
-std::atomic<int> frameCounter(0);   //多线程计数
-int VISframeCount = 0;
+//原始DoFP队列
+ThreadSafeMatQueue VisimageQuene_A;
+//显示线程
+ThreadSafeMatQueue ProcessedDisPlayQueue_AoLP;
+ThreadSafeMatQueue ProcessedDisPlayQueue_DoLP;
+ThreadSafeMatQueue ProcessedDisPlayQueue_I90;
+ThreadSafeMatQueue ProcessedDisPlayQueue_S0;
+ThreadSafeMatQueue ProcessedDisPlayQueue_DoFP;
+//保存线程
+ThreadSafeMatQueue ProcessedSaveQueue_AoLP;
+ThreadSafeMatQueue ProcessedSaveQueue_DoLP;
+ThreadSafeMatQueue ProcessedSaveQueue_I90;
+ThreadSafeMatQueue ProcessedSaveQueue_S0;
+ThreadSafeMatQueue ProcessedSaveQueue_DoFP;
+
+
+
+
 //函数声明
-/*----------------------- Galaxy ------------------------- */  
-void VISdisplayThread(); // 单采集25帧
-/*----------------------- Galaxy ------------------------- */  
-
-/*----------------------- 其它操作 ------------------------- */  
-void keyListener() ;
+void VISprocessThread(); 
+void VISdisplayThread();
+void VISsaveThread();
 void CleanupSession();
-/*----------------------- Save ------------------------- */       
-// void SaveCameraFrame(const unsigned char* imageData, int width, int height, const char* folderPath) ;
-void FrameStore();
+
+void VisInit();
+void VisStartcap();
+void VisStopcap();
+
+//cuda实现，待完成
 /*----------------------- AoLP可视化 ------------------------- */    
-cv::Mat visualizeAoLP(const cv::Mat& aolp, const cv::Mat& dolp) {
-    cv::Mat hsv(aolp.size(), CV_8UC3);
-    cv::Mat bgr(aolp.size(), CV_8UC3);
+// cv::Mat visualizeAoLP(const cv::Mat& aolp, const cv::Mat& dolp) {
+//     cv::Mat hsv(aolp.size(), CV_8UC3);
+//     cv::Mat bgr(aolp.size(), CV_8UC3);
 
-    for (int r = 0; r < aolp.rows; ++r) {
-        for (int c = 0; c < aolp.cols; ++c) {
-            float aolp_rad = aolp.at<float>(r, c); // AoLP in radians [-pi/2, pi/2]
-            float dolp_val = dolp.at<float>(r, c); // DoLP [0, 1]
+//     for (int r = 0; r < aolp.rows; ++r) {
+//         for (int c = 0; c < aolp.cols; ++c) {
+//             float aolp_rad = aolp.at<float>(r, c); // AoLP in radians [-pi/2, pi/2]
+//             float dolp_val = dolp.at<float>(r, c); // DoLP [0, 1]
+//             // Map AoLP from [-pi/2, pi/2] to Hue [0, 180] for OpenCV HSV
+//             unsigned char hue = static_cast<unsigned char>(((aolp_rad / M_PI) + 0.5) * 180.0); // Maps -pi/2->0, 0->90, pi/2->180
+//             // Set Saturation based on DoLP (higher DoLP = more saturated color)
+//             unsigned char saturation = static_cast<unsigned char>(dolp_val * 255.0);
+//             // Set Value to max (or base it on S0 intensity if desired)
+//             unsigned char value = 255;
+//             hsv.at<cv::Vec3b>(r, c) = cv::Vec3b(hue, saturation, value);
+//         }
+//     }
+//     cv::cvtColor(hsv, bgr, cv::COLOR_HSV2BGR);
+//     return bgr;
+// } 
 
-            // Map AoLP from [-pi/2, pi/2] to Hue [0, 180] for OpenCV HSV
-            unsigned char hue = static_cast<unsigned char>(((aolp_rad / M_PI) + 0.5) * 180.0); // Maps -pi/2->0, 0->90, pi/2->180
-
-            // Set Saturation based on DoLP (higher DoLP = more saturated color)
-            unsigned char saturation = static_cast<unsigned char>(dolp_val * 255.0);
-
-            // Set Value to max (or base it on S0 intensity if desired)
-            unsigned char value = 255;
-
-            hsv.at<cv::Vec3b>(r, c) = cv::Vec3b(hue, saturation, value);
-        }
-    }
-    cv::cvtColor(hsv, bgr, cv::COLOR_HSV2BGR);
-    return bgr;
-}
-/*----------------------- AoLP可视化 ------------------------- */    
 /*----------------------- 可见光偏振相机回调函数 ------------------------- */       
 // 用户定义回调采集函数的具体实现，当回调采集事件发生时，自动调用该函数
+// class CSampleCaptureEventHandler : public ICaptureEventHandler {
+// public:
+//     void DoOnImageCaptured(CImageDataPointer &objImageDataPointer, void *pUserParam) 
+// 	{
+//         if (pRaw8Buffer != nullptr) pRaw8Buffer = nullptr;
+//         if (GX_FRAME_STATUS_SUCCESS == objImageDataPointer->GetStatus()) {
+//             int width = objImageDataPointer->GetWidth();
+//             int height = objImageDataPointer->GetHeight();
+//             // 假设原始数据是Mono8图像->GX_BIT_0_7
+//             void* pRaw8Buffer = objImageDataPointer->ConvertToRaw8(GX_BIT_0_7);
+//             cv::Mat frame_sdk_wrapper(height, width, CV_8UC1, pRaw8Buffer);
+//             // unsigned char* h_input = static_cast<unsigned char*>(pRaw8Buffer);            
+//             VisimageQuene_A.push(frame_sdk_wrapper.clone());
+//             // VisimageQuene.push(flip_ptr, width, height, channels);
+//         }
+//     }
+// };
+//256fps
 class CSampleCaptureEventHandler : public ICaptureEventHandler {
-public:
-    void DoOnImageCaptured(CImageDataPointer &objImageDataPointer, void *pUserParam) 
-	{
-        if (pRaw8Buffer != nullptr) pRaw8Buffer = nullptr;
-        if (objImageDataPointer->GetStatus() == GX_FRAME_STATUS_SUCCESS) {
-            int width = objImageDataPointer->GetWidth();
-            int height = objImageDataPointer->GetHeight();
-            // void* pRaw8Buffer = objImageDataPointer->ConvertToRGB24(GX_BIT_0_7, GX_RAW2RGB_NEIGHBOUR, false);
-            void* pRaw8Buffer = objImageDataPointer->ConvertToRaw8(GX_BIT_0_7);
-            unsigned char* h_input = static_cast<unsigned char*>(pRaw8Buffer);            
-            VisimageQuene.push(h_input, width, height, channels);
-            
+    public:
+        std::atomic<long long> total_callback_time_us{0}; // 总回调时间 (微秒)
+        std::atomic<int> callback_count{0};               // 回调次数
+    
+        void DoOnImageCaptured(CImageDataPointer &objImageDataPointer, void *pUserParam)
+        {
+            auto start_time = std::chrono::high_resolution_clock::now(); // 记录开始时间
+    
+            if (GX_FRAME_STATUS_SUCCESS == objImageDataPointer->GetStatus()) {
+                int width = objImageDataPointer->GetWidth();
+                int height = objImageDataPointer->GetHeight();
+                //产生mono8的单桢
+                void* pSDKBuffer = objImageDataPointer->ConvertToRaw8(GX_BIT_0_7);
+                if (pSDKBuffer) {
+                    cv::Mat frame_sdk_wrapper(height, width, CV_8UC1, pSDKBuffer);
+                    VisimageQuene_A.push(frame_sdk_wrapper.clone());
+                } else {
+                    fprintf(stderr, "错误: 回调函数中 ConvertToRaw8 失败。\n");
+                }
+            }
+    
+            auto end_time = std::chrono::high_resolution_clock::now(); // 记录结束时间
+            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+            total_callback_time_us += duration.count();
+            callback_count++;
+    
+            // 每隔一定数量的回调打印一次平均执行时间，避免频繁打印影响性能
+            if (callback_count > 0 && callback_count % 100 == 0) {
+                printf("回调函数平均执行时间: %lld 微秒\n", total_callback_time_us / callback_count);
+            }
         }
-        
-    }
-};
-/*----------------------- 可见光偏振相机回调函数 ------------------------- */       
+    };  
 /*----------------------- 主函数 ------------------------- */       
 int main() {
     std::cout << "----------------- System Start ------------------\n" << std::endl;
-    ICaptureEventHandler* pCaptureEventHandler = NULL; //<采集回调对象
     // 初始化库，才能调用相关的功能
     IGXFactory::GetInstance().Init();
     try {
-        // 枚举设备
-		GxIAPICPP::gxdeviceinfo_vector vectorDeviceInfo;
-        //参数扫描时长，并将获取的信息保存到相应列表之中。
-		IGXFactory::GetInstance().UpdateDeviceList(1000, vectorDeviceInfo);
-		if (0 == vectorDeviceInfo.size()) {
-			std::cout << "无可用设备!" << std::endl;
-		}
-		// 打开第一台设备以及设备下面第一个流
-		CGXDevicePointer ObjDevicePtr = IGXFactory::GetInstance().OpenDeviceBySN(vectorDeviceInfo[0].GetSN(), GX_ACCESS_EXCLUSIVE);
-		CGXStreamPointer ObjStreamPtr = ObjDevicePtr->OpenStream(visdeviceID);
-		// 获取远端设备属性控制器
-		CGXFeatureControlPointer ObjFeatureControlPtr = ObjDevicePtr->GetRemoteFeatureControl();
-		// 获取流层属性控制器
-		CGXFeatureControlPointer objStreamFeatureControlPtr = ObjStreamPtr->GetFeatureControl();
-		// 设置 Buffer 处理模式
-		objStreamFeatureControlPtr->GetEnumFeature("StreamBufferHandlingMode")->SetValue("OldestFirst");
-		// 设置曝光时间
-        // ObjFeatureControlPtr->GetFloatFeature("ExposureTime")->SetValue(AE_Time_INIT); 
-        // ObjFeatureControlPtr->GetFloatFeature("AutoExposureTimeMax")->SetValue(AE_Time_MAX); 
-        // ObjFeatureControlPtr->GetEnumFeature("ExposureTimeMode")->SetValue("STANDARD");
-        // ObjFeatureControlPtr->GetEnumFeature("ExposureAuto")->SetValue("Continuous"); //Continuous、Off、Once !!!需要在退出时设置为off
-        // 设置增益
-        CFloatFeaturePointer objGain = ObjFeatureControlPtr->GetFloatFeature("Gain");
-        //CFloatFeaturePointer objET = ObjFeatureControlPtr->GetFloatFeature("ExposureTime");
-        objGain->SetValue(INIT_GAIN);
-        std::cout << "VIS camera: " << vectorDeviceInfo[0].GetModelName() << ": 初始化成功！" << std::endl;
+        VisInit();
+        // 启动可见光摄像头线程：处理
+        std::thread processThread(VISprocessThread);
         // 启动可见光摄像头线程：显示
-        std::thread visdisplay(VISdisplayThread);
-        // 创建两个线程分别处理两个相机的图像保存
-        std::thread SaveThread(FrameStore);
+        std::thread displayThread(VISdisplayThread);
+        //启动可见光摄像头线程：保存
+        std::thread saveThread(VISsaveThread);
         // -----------------    Galaxy    ----------------- //
-		// 注册回调采集
-		pCaptureEventHandler = new CSampleCaptureEventHandler();
-		ObjStreamPtr->RegisterCaptureCallback(pCaptureEventHandler, NULL);
-		// 开启流层通道
-		ObjStreamPtr->StartGrab();
-        //给设备发送开采命令
-        ObjFeatureControlPtr->GetCommandFeature("AcquisitionStart")->Execute();
-
-		// 此时开采成功,控制台打印信息,直到输入任意键继续
+		VisStartcap();
+        // 此时开采成功,控制台打印信息,直到输入任意键继续
 		while (Capture_Flag){Sleep(1);}
-
-		// 发送停采命令
-		ObjFeatureControlPtr->GetCommandFeature("AcquisitionStop")->Execute();
-        //ObjFeatureControlPtr->GetEnumFeature("ExposureAuto")->SetValue("Off");
-		ObjStreamPtr->StopGrab();
-		// 注销采集回调
-		ObjStreamPtr->UnregisterCaptureCallback();
-		// 释放资源
-		ObjStreamPtr->Close();
-		ObjDevicePtr->Close();
-        printf("VIS camera MER2-502-79U3C: 关闭！\n");
-        // -----------------    Galaxy    ----------------- //
-
+		VisStopcap();
         CleanupSession();
-
-        visdisplay.join();
-        SaveThread.join();
-        //  按任意键退出程序
-        // listenerThread.join();  // 等待键盘监听线程结束
-        // 主线程等待两个摄像头线程完成（实际上这里是永远等待，除非中断）
-        // SaveThread.join();
-
+        processThread.join();
+        displayThread.join();
+        saveThread.join();
     }
     catch (CGalaxyException &e) {
         std::cout << "错误码: " << e.GetErrorCode() << std::endl;
@@ -183,151 +172,256 @@ int main() {
 	std::cout << "\n----------------- System Exit -------------------" << std::endl;
     return 0;
 }
-/*---------------------- Displaying Frame -----------------------------*/
-void VISdisplayThread() {
-    std::string VISwindowName_DoLP = "DoLP";
-    std::string VISwindowName_I90 = "I90";
-    std::string VISwindowName_S0 = "S0";
-    std::string VISwindowName_AoLP = "AoLP";
-    std::string VISwindowName_DoFP = "DoFP";
-    cv::namedWindow("I90", cv::WINDOW_NORMAL);
-    cv::namedWindow("DoLP", cv::WINDOW_NORMAL);
-    cv::namedWindow("AoLP", cv::WINDOW_NORMAL);
-    cv::namedWindow("S0", cv::WINDOW_NORMAL);
-    cv::namedWindow("DoFP", cv::WINDOW_NORMAL);
-    cv::resizeWindow("I90", 320, 240);
-    cv::resizeWindow("DoLP", 320, 240);
-    cv::resizeWindow("AoLP", 320, 240);
-    cv::resizeWindow("S0", 320, 240);
-    cv::resizeWindow("DoFP", 320, 240);
+
+void VisInit(){
+     // 枚举设备
+		GxIAPICPP::gxdeviceinfo_vector vectorDeviceInfo;
+        //参数扫描时长，并将获取的信息保存到相应列表之中。
+		IGXFactory::GetInstance().UpdateDeviceList(1000, vectorDeviceInfo);
+		if (0 == vectorDeviceInfo.size()) {
+			std::cout << "无可用设备!" << std::endl;
+		}
+		// 打开第一台设备以及设备下面第一个流
+		ObjDevicePtr = IGXFactory::GetInstance().OpenDeviceBySN(vectorDeviceInfo[0].GetSN(), GX_ACCESS_EXCLUSIVE);
+		ObjStreamPtr = ObjDevicePtr->OpenStream(visdeviceID);
+		// 获取远端设备属性控制器
+		ObjFeatureControlPtr = ObjDevicePtr->GetRemoteFeatureControl();
+		// 获取流层属性控制器
+		CGXFeatureControlPointer objStreamFeatureControlPtr = ObjStreamPtr->GetFeatureControl();
+		// 设置 Buffer 处理模式
+		objStreamFeatureControlPtr->GetEnumFeature("StreamBufferHandlingMode")->SetValue("OldestFirst");
+		// 设置曝光时间
+        ObjFeatureControlPtr->GetFloatFeature("ExposureTime")->SetValue(AE_Time_MAX);
+        // 设置增益
+        CFloatFeaturePointer objGain = ObjFeatureControlPtr->GetFloatFeature("Gain");
+        objGain->SetValue(INIT_GAIN);
+        std::cout << "VIS camera: " << vectorDeviceInfo[0].GetModelName() << ": 初始化成功！" << std::endl;
+}
+void VisStartcap(){
+    // 注册回调采集
+    pCaptureEventHandler = new CSampleCaptureEventHandler();
+    ObjStreamPtr->RegisterCaptureCallback(pCaptureEventHandler, NULL);
+    // 开启流层通道
+    ObjStreamPtr->StartGrab();
+    //给设备发送开采命令
+    ObjFeatureControlPtr->GetCommandFeature("AcquisitionStart")->Execute();
+}
+
+void VisStopcap(){
+    // 发送停采命令
+    ObjFeatureControlPtr->GetCommandFeature("AcquisitionStop")->Execute();
+    // ObjFeatureControlPtr->GetEnumFeature("ExposureAuto")->SetValue("Off");
+    ObjStreamPtr->StopGrab();
+    // 注销采集回调
+    ObjStreamPtr->UnregisterCaptureCallback();
+    // 释放资源
+    ObjStreamPtr->Close();
+    ObjDevicePtr->Close();
+    printf("VIS camera MER2-502-79U3C: 关闭！\n");
+}
+/*---------------------- Process Frame -----------------------------*/
+void VISprocessThread() {
+    
 	cv::Mat i0, i45, i90, i135,s0,s1,s2, dolp, aolp; // Add dolp, aolp
-	cv::Mat i0_display, i45_display, i90_display, i135_display, s0_display,s1_display,s2_display,dolp_display;
-	cv::Mat aolp_display_hsv;
+	cv::Mat i0_display, i45_display, i90_display, i135_display, s0_display,s1_display,s2_display,dolp_display,aolp_display;
+    cv::Mat VisdisplayFrame_DoFP;
+	//核函数解算初始化
+    PolarizationProcessor polar_processor(2448, 2048, true); // Use true for pinned memory
     auto lastTime = std::chrono::steady_clock::now();
     int frameCount = 0;
     double fps = 0.0;
-    while (Capture_Flag) {
-        auto [pVISBuffer, width, height, channels] = VisimageQuene.pop(); // 获取处理后的数据
-        if (pVISBuffer == nullptr || width == 0){
-            printf("pVISBuffer is Null!\n");
-        } // 如果收到空指针，退出线程   
-        else{                        
-            // 转换为 OpenCV Mat
-			VisdisplayFrame = cv::Mat(height, width, CV_8U, pVISBuffer); // 处理后的图像是单通道的
-            
-            //深拷贝   
-            VisdisplayFrame_DoFP= cv::Mat(height, width, CV_8U, pVISBuffer);
-            ProcessedImageQueue_DoFP.push(VisdisplayFrame_DoFP.clone());
 
-            bool success = Bilinear_Interpolation_And_Polarization_CUDA(VisdisplayFrame, i0, i45, i90, i135,s0,s1,s2, dolp, aolp);
-			
-            cv::normalize(dolp, dolp_display, 0, 255, cv::NORM_MINMAX, CV_8U);
-			cv::normalize(i90, i90_display, 0, 255, cv::NORM_MINMAX, CV_8U);
-            cv::normalize(s0, s0_display, 0, 255, cv::NORM_MINMAX, CV_8U);
-			aolp_display_hsv = visualizeAoLP(aolp, dolp);
-            ProcessedImageQueue_I90.push(i90_display); // 存入处理后的图像
-			ProcessedImageQueue_DoLP.push(dolp_display); // 存入处理后的图像
-            ProcessedImageQueue_S0.push(s0_display); // 存入处理后的图像
-            ProcessedImageQueue_AoLP.push(aolp_display_hsv); // 存入处理后的图像
-            // SaveCameraFrame(pVISBuffer, width, height, "Result/VIS");
+    printf("ProcessThread 启动\n");
+    while (Capture_Flag) {
+        cv::Mat received_frame = VisimageQuene_A.pop();
+            if (received_frame.empty()) {
+                if (!Capture_Flag) {
+                    printf("VISprocessThread: 收到退出信号，线程结束。\n");
+                    break;
+                }
+                printf("VISprocessThread: 从 VisimageQuene_A 收到空帧！\n");
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                continue;
+            }                
+    
+            //深拷贝DoFP
+            VisdisplayFrame_DoFP = received_frame.clone();
+            // ProcessedDisPlayQueue_DoFP.push(VisdisplayFrame_DoFP);
+            
+           
+
+            //双线性插值cuda运算
+            // bool success_polarization = Bilinear_Interpolation_And_Polarization_CUDA(received_frame, i0, i45, i90, i135,s0,s1,s2, dolp, aolp);
+            //卷积核提取_
+            bool success = polar_processor.process_frame(received_frame,i0, i45, i90, i135,s0, s1, s2,dolp, aolp);
+
+            //归一化
+            bool norm_ok = true;
+            // norm_ok = normalize_minmax_cuda_32f_to_8u(dolp, dolp_display);
+            // norm_ok =  normalize_minmax_cuda_32f_to_8u(i90, i90_display);
+            norm_ok =  normalize_minmax_cuda_32f_to_8u(s0, s0_display);
+            // norm_ok = normalize_minmax_cuda_32f_to_8u(aolp, aolp_display);
+
+
+
+            //显示
+            // ProcessedDisPlayQueue_I90.push(i90_display.clone()); // 存入处理后的图像
+            // ProcessedDisPlayQueue_DoLP.push(dolp_display.clone()); // 存入处理后的图像
+            ProcessedDisPlayQueue_S0.push(s0_display.clone()); // 存入处理后的图像
+            // ProcessedDisPlayQueue_AoLP.push(dolp_display.clone()); // 存入处理后的图像
+            // ProcessedDisPlayQueue_AoLP.push(aolp_display_hsv); // 存入处理后的图像
+            
+
+            //保存
+            // ProcessedSaveQueue_I90.push(i90_display.clone()); // 存入处理后的图像
+			// ProcessedSaveQueue_DoLP.push(dolp_display.clone()); // 存入处理后的图像
+            // ProcessedSaveQueue_S0.push(s0_display.clone()); // 存入处理后的图像
+            // ProcessedSaveQueue_AoLP.push(aolp_display.clone());
+            ProcessedSaveQueue_DoFP.push(VisdisplayFrame_DoFP);
+            
 
             frameCount++;
             auto currentTime = std::chrono::steady_clock::now();
             std::chrono::duration<double> elapsed = currentTime - lastTime;
             if (elapsed.count() >= 1.0) { // 每秒更新帧率
                 fps = frameCount / elapsed.count();
+                printf("处理 FPS: %.2f\n", fps);
                 frameCount = 0;
                 lastTime = currentTime;
             }
-            // 在图像上显示帧率
-            std::string fpsText = "FPS: " + std::to_string(static_cast<int>(fps));
-            //显示dolp
-            cv::putText(dolp_display, fpsText, cv::Point(10, 130), cv::FONT_HERSHEY_SIMPLEX, 3, cv::Scalar(0, 0, 255), 10); 
-            cv::imshow(VISwindowName_DoLP, dolp_display);
-            //显示aolp
-			cv::putText(aolp_display_hsv, fpsText, cv::Point(10, 130), cv::FONT_HERSHEY_SIMPLEX, 3, cv::Scalar(0, 0, 255), 10); 
-            cv::imshow(VISwindowName_AoLP, aolp_display_hsv);
-            //显示I90
-			cv::putText(i90_display, fpsText, cv::Point(10, 130), cv::FONT_HERSHEY_SIMPLEX, 3, cv::Scalar(0, 0, 255), 10); 
-            cv::imshow(VISwindowName_I90, i90_display);
-            //显示S0
-            cv::putText(s0_display, fpsText, cv::Point(10, 130), cv::FONT_HERSHEY_SIMPLEX, 3, cv::Scalar(0, 0, 255), 10); 
-            cv::imshow(VISwindowName_S0, s0_display);
-            //显示DoFP
-            cv::putText(VisdisplayFrame_DoFP, fpsText, cv::Point(10, 130), cv::FONT_HERSHEY_SIMPLEX, 3, cv::Scalar(0, 0, 255), 10); 
-            cv::imshow(VISwindowName_DoFP, VisdisplayFrame_DoFP);
-            keyListener();
-            // 显示完毕清除缓存
-        }
-    }
-    delete[] pVISBuffer;
-
-}
-/*---------------------- Displaying Frame -----------------------------*/
-
-
-/*---------------------- 清除缓存 -----------------------------*/
-void CleanupSession() {
-    // 通知显示线程退出并等待
-    Capture_Flag = false;  
-    VisimageQuene.push(nullptr, 0, 0, 0); 
-    SaveVisimageQuene.push(nullptr, 0, 0, 0);
-    ProcessedImageQueue_AoLP.push(cv::Mat());
-    ProcessedImageQueue_DoLP.push(cv::Mat());
-    ProcessedImageQueue_I90.push(cv::Mat());
-    ProcessedImageQueue_S0.push(cv::Mat());
-    ProcessedImageQueue_DoFP.push(cv::Mat());
-    
-    if (pVISBuffer != nullptr) free(pVISBuffer);
-    cv::destroyAllWindows();
-}
-/*---------------------- 清除缓存 -----------------------------*/
-
-
-/*---------------------- 按键监听 -----------------------------*/
-void keyListener() {
-    // 等待按键输入
-    char key = cv::waitKey(1);
-    if (key == 'q') {
-        // 按下 'q' 键后，退出程序
-        Capture_Flag = false;
     }
 }
-/*---------------------- 按键监听 -----------------------------*/
 
-/*---------------------- Saving Frame -----------------------------*/
-void FrameStore() {
-    int saveInterval = 2;  // 每隔 2 帧保存 1 帧
-    int frameCounter = 0;  // 当前帧计数
 
+void VISdisplayThread() {
+    // 窗口名称
+    // std::string VISwindowName_DoLP = "DoLP";
+    // std::string VISwindowName_I90 = "I90";
+    std::string VISwindowName_S0 = "S0";
+    // std::string VISwindowName_AoLP = "AoLP";
+    // std::string VISwindowName_DoFP = "DoFP";
+
+
+    // 创建窗口
+    // cv::namedWindow(VISwindowName_I90, cv::WINDOW_NORMAL);
+    // cv::namedWindow(VISwindowName_DoLP, cv::WINDOW_NORMAL);
+    cv::namedWindow(VISwindowName_S0, cv::WINDOW_NORMAL);
+    // cv::namedWindow(VISwindowName_AoLP, cv::WINDOW_NORMAL);
+    // cv::namedWindow(VISwindowName_DoFP, cv::WINDOW_NORMAL);
+
+
+    // 调整窗口大小
+    // cv::resizeWindow(VISwindowName_I90, 640, 512);
+    // cv::resizeWindow(VISwindowName_DoLP, 640, 512);
+    cv::resizeWindow(VISwindowName_S0, 640, 512);
+    // cv::resizeWindow(VISwindowName_AoLP, 640, 512);
+    // cv::resizeWindow(VISwindowName_DoFP, 640, 512);
+
+
+    // 用于存储当前要显示的图像的Mat对象
+    cv::Mat dolp_to_show, i90_to_show, s0_to_show, aolp_to_show, dofp_to_show;
+
+    // 用于显示FPS的计时器 (可选, 也可以显示来自处理线程的FPS)
+    auto lastDisplayTime = std::chrono::steady_clock::now();
+    int displayFrameCount = 0;
+    double display_fps = 0.0;
+
+    printf("VISdisplayThread 已启动。\n");
     while (Capture_Flag) {
-        VISframeCount++;
-        frameCounter++;
 
+        // cv::Mat temp_dofp = ProcessedDisPlayQueue_DoFP.pop(); // 这是 Q2_DoFP
+        // if (!temp_dofp.empty()) {
+        //     dofp_to_show = temp_dofp;
+        // } else if (!Capture_Flag) { // 如果收到退出信号且队列为空
+        //     printf("VISdisplayOnlyThread: 通过空的DoFP收到退出信号，线程结束。\n");
+        //     break;
+        // }
+        
+        // cv::Mat temp_dolp = ProcessedDisPlayQueue_DoLP.pop();
+        // if (!temp_dolp.empty()) dolp_to_show = temp_dolp;
+            
+        // cv::Mat temp_i90 = ProcessedDisPlayQueue_I90.pop();
+        // if (!temp_i90.empty()) i90_to_show = temp_i90;
+
+        cv::Mat temp_s0 = ProcessedDisPlayQueue_S0.pop();
+        if (!temp_s0.empty()) s0_to_show = temp_s0;
+
+        // cv::Mat temp_aolp = ProcessedDisPlayQueue_AoLP.pop();
+        // if (!temp_aolp.empty()) aolp_to_show = temp_aolp;
+
+       
+
+
+        // 显示本地 to_show Mat 对象中的内容
+        if (!s0_to_show.empty()) {
+            // 计算显示FPS
+            displayFrameCount++;
+            auto currentTime = std::chrono::steady_clock::now();
+            std::chrono::duration<double> elapsed = currentTime - lastDisplayTime;
+            if (elapsed.count() >= 1.0) {
+                display_fps = displayFrameCount / elapsed.count();
+                displayFrameCount = 0;
+                lastDisplayTime = currentTime;
+            }
+            std::string fpsText_display = "FPS: " + std::to_string(static_cast<int>(display_fps));
+            // 可以绘制处理FPS (从其他线程获取) 或显示FPS
+            // cv::putText(dofp_to_show, processing_fps_text, ...); // 如果传递处理FPS
+            cv::putText(s0_to_show, fpsText_display, cv::Point(10, 70), cv::FONT_HERSHEY_SIMPLEX, 2, cv::Scalar(0,255,0), 3);
+            cv::imshow(VISwindowName_S0, s0_to_show);
+        }
+
+        // if (!dolp_to_show.empty()) cv::imshow(VISwindowName_DoLP, dolp_to_show);
+        // if (!i90_to_show.empty()) cv::imshow(VISwindowName_I90, i90_to_show);
+        // if (!s0_to_show.empty()) cv::imshow(VISwindowName_S0, s0_to_show);
+        // if (!aolp_to_show.empty()) cv::imshow(VISwindowName_AoLP, aolp_to_show); // 如果使用AoLP，取消注释
+        // if (!dofp_to_show.empty()) cv::imshow(VISwindowName_DoFP, dofp_to_show); 
+        char key = cv::waitKey(1);                                     
+    }
+    cv::destroyAllWindows(); // 在这里销毁窗口，因为它们是在这个线程中创建的
+}
+/*---------------------- Saving Frame -----------------------------*/
+void VISsaveThread() {
+    int saveInterval = 2;  // 每隔 2 帧保存 1 帧
+    int VISframeCount;
+    printf("SaveThread 已启动。\n");
+    while (Capture_Flag) {
+         
         // 取出处理后的图像
-        cv::Mat processedImag_DoFP = ProcessedImageQueue_DoFP.pop();
-        cv::Mat processedImag_I90 = ProcessedImageQueue_I90.pop();
-        cv::Mat processedImag_DoLP = ProcessedImageQueue_DoLP.pop();
-        cv::Mat processedImag_AoLP = ProcessedImageQueue_AoLP.pop();
-        cv::Mat processedImag_S0 = ProcessedImageQueue_S0.pop();
-
+        cv::Mat processedImag_DoFP = ProcessedSaveQueue_DoFP.pop();
+        // cv::Mat processedImag_I90 = ProcessedSaveQueue_I90.pop();
+        // cv::Mat processedImag_DoLP = ProcessedSaveQueue_DoLP.pop();
+        // cv::Mat processedImag_AoLP = ProcessedSaveQueue_AoLP.pop();
+        // cv::Mat processedImag_S0 = ProcessedSaveQueue_S0.pop();
+        VISframeCount++;
         // 如果达到保存间隔，才保存
-        if (frameCounter % saveInterval == 0) {
-            std::string filename_90 = "D:/image/caiji/I90/" + std::to_string(VISframeCount) + ".bmp";
-            cv::imwrite(filename_90, processedImag_I90);
-            std::string filename_dolp = "D:/image/caiji/DoLP/" + std::to_string(VISframeCount) + ".bmp";
-            cv::imwrite(filename_dolp, processedImag_DoLP);
-            std::string filename_aolp = "D:/image/caiji/AoLP/" + std::to_string(VISframeCount) + ".bmp";
-            cv::imwrite(filename_aolp, processedImag_AoLP);
-            std::string filename_s0 = "D:/image/caiji/S0/" + std::to_string(VISframeCount) + ".bmp";
-            cv::imwrite(filename_s0, processedImag_S0);
-            std::string filename_dofp = "D:/image/caiji/DoFP/" + std::to_string(VISframeCount) + ".bmp";
+        if (VISframeCount % saveInterval == 0) {
+            // std::string filename_90 = "D:/image/caiji/I90/" + std::to_string(VISframeCount) + ".bmp";
+            // cv::imwrite(filename_90, processedImag_I90);
+            // std::string filename_dolp = "D:/image/temp/DoLP/" + std::to_string(VISframeCount) + ".bmp";
+            // cv::imwrite(filename_dolp, processedImag_DoLP);
+            // std::string filename_aolp = "D:/image/caiji/AoLP/" + std::to_string(VISframeCount) + ".bmp";
+            // cv::imwrite(filename_aolp, processedImag_AoLP);
+            // std::string filename_s0 = "D:/image/temp/S0/" + std::to_string(VISframeCount) + ".bmp";
+            // cv::imwrite(filename_s0, processedImag_S0);
+            std::string filename_dofp = "D:/image/temp/DoFP/" + std::to_string(VISframeCount) + ".bmp";
             cv::imwrite(filename_dofp, processedImag_DoFP);
         }
     }
 }
+/*---------------------- 清除缓存 -----------------------------*/
+void CleanupSession() {
+    //原始队列
+    VisimageQuene_A.push(cv::Mat());
+    //显示队列
+    ProcessedDisPlayQueue_DoLP.push(cv::Mat());
+    ProcessedDisPlayQueue_I90.push(cv::Mat());
+    ProcessedDisPlayQueue_S0.push(cv::Mat());
+    // ProcessedDisPlayQueue_DoFP.push(cv::Mat());
+    // ProcessedImageQueue_AoLP.push(cv::Mat());
 
-/*---------------------- Saving Frame -----------------------------*/
-
-
-
+    // ProcessedSaveQueue_DoLP.push(cv::Mat());
+    // ProcessedSaveQueue_I90.push(cv::Mat());
+    // ProcessedSaveQueue_S0.push(cv::Mat());
+    ProcessedSaveQueue_DoFP.push(cv::Mat());
+    cv::destroyAllWindows();
+}

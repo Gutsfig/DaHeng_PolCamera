@@ -1,0 +1,44 @@
+cmake_minimum_required(VERSION 3.18)
+project(PolarizationProcessor LANGUAGES CXX CUDA)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_ARCHITECTURES 89) # 保留一个以加快编译
+
+# 查找依赖项 (这个库只需要OpenCV和CUDA)
+set(OpenCV_DIR "D:/Tools/opencv4.9/opencv/build") # <--- 确认你的OpenCV路径
+find_package(OpenCV REQUIRED COMPONENTS core imgproc)
+find_package(CUDAToolkit REQUIRED)
+
+# 统一MSVC运行时库，解决LNK4098警告
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+endif()
+
+# 创建一个共享库 (DLL)
+add_library(${PROJECT_NAME} SHARED
+    src/polarization_kernels.cu
+)
+
+# 为库配置包含目录
+target_include_directories(${PROJECT_NAME} PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src> # 导出时需要的头文件路径
+    ${OpenCV_INCLUDE_DIRS}
+    ${CUDAToolkit_INCLUDE_DIRS}
+)
+
+# 为库链接它所依赖的库
+target_link_libraries(${PROJECT_NAME} PUBLIC
+    ${OpenCV_LIBS}
+)
+
+# ！！！最关键的一步！！！
+# 定义导出宏，让POLAR_API变成__declspec(dllexport)
+target_compile_definitions(${PROJECT_NAME} PRIVATE 
+    POLAR_DLL_EXPORTS
+)
+
+# 设置输出目录，方便查找
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

@@ -1,0 +1,44 @@
+cmake_minimum_required(VERSION 3.18)
+project(CudaImageUtils LANGUAGES CXX CUDA)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_ARCHITECTURES 86)
+
+# 查找依赖项 (OpenCV, CUDA, Thrust)
+set(OpenCV_DIR "D:/Tools/opencv4.9/opencv/build") # <--- 确认你的OpenCV路径
+find_package(OpenCV REQUIRED COMPONENTS core imgproc)
+find_package(CUDAToolkit REQUIRED)
+
+# 统一MSVC运行时库
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+endif()
+
+# 创建共享库，并将所有.cu文件作为源文件
+add_library(${PROJECT_NAME} SHARED
+    src/bilinear.cu
+    src/normalize_gpu.cu
+)
+
+# 配置包含目录
+target_include_directories(${PROJECT_NAME} PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+    ${OpenCV_INCLUDE_DIRS}
+    ${CUDAToolkit_INCLUDE_DIRS}
+)
+
+# 链接依赖库
+target_link_libraries(${PROJECT_NAME} PUBLIC
+    ${OpenCV_LIBS}
+)
+
+# ！！！定义导出宏，让CUDA_UTILS_API生效！！！
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    CUDA_UTILS_DLL_EXPORTS
+)
+
+# 设置输出目录
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
