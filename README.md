@@ -9,6 +9,7 @@ This is a secondary development based on the polarisation camera (MER2-502-79U3M
 * cuda11.8
 * GalaxySDK
 * UTF-8
+* Windows
 ### Main technology
 * Using CUDA to solve mosaic images, real-time solution display can be achieved.
 * With multi-threading, pictures can be displayed and saved at the same time.
