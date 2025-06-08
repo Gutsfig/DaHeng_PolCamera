@@ -1,7 +1,11 @@
-# DaHeng_PolCamera
+# Overall Flowchart
 ![MyPicture](https://raw.githubusercontent.com/Gutsfig/DaHeng_PolCamera/main/img/xiangji.jpg)
-<h1 style="text-align: center;">Overall Flowchart</h1>
-
+# Real-time Display
+In a comparison between the Daheng Camera official SDK and our OpenCV-based display, the real-time polarization calculation images can achieve 59 FPS. The processing speed is essentially equivalent to the official DoFP display.
+![MyPicture](https://raw.githubusercontent.com/Gutsfig/DaHeng_PolCamera/main/img/tupian.jpg)
+# Polarization demosaicing
+Demosaic raw polarization image captured with a polarization sensor (e.g., IMX250MZR / MYR).
+![MyPicture](https://raw.githubusercontent.com/Gutsfig/DaHeng_PolCamera/main/img/masaike.jpg)
 ## Introduce
 This is a secondary development based on the polarisation camera (MER2-502-79U3M POL), the main functions are real-time display I0, I45, I90, I35, S0, S1, S2, DoLP, AoLP, and real-time saving function.
 ---
