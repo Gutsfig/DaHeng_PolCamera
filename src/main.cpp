@@ -250,12 +250,12 @@ void VISprocessThread() {
             
            
 
-            //双线性插值cuda运算
+            //双线性插值解马赛克cuda运算
             // bool success_polarization = Bilinear_Interpolation_And_Polarization_CUDA(received_frame, i0, i45, i90, i135,s0,s1,s2, dolp, aolp);
-            //卷积核提取_
+            //直接提取解马赛克cuda运算
             bool success = polar_processor.process_frame(received_frame,i0, i45, i90, i135,s0, s1, s2,dolp, aolp);
 
-            //归一化
+            //归一化cuda运算
             bool norm_ok = true;
             // norm_ok = normalize_minmax_cuda_32f_to_8u(dolp, dolp_display);
             // norm_ok =  normalize_minmax_cuda_32f_to_8u(i90, i90_display);
