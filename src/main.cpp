@@ -4,7 +4,7 @@
 #include "ThreadSafeQuene.h"
 #include "GalaxyIncludes.h" //大恒头文件
 #include"polarization_kernels.h" //偏振核函数头文件
-#include "CudaImageUtils.h"
+#include "CudaImageUtils.h"     //cuda图像处理头文件
 
 //定义全局变量
 bool Capture_Flag = true;  //控制线程的标志
