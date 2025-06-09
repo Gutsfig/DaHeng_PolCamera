@@ -21,7 +21,7 @@ This is a secondary development based on the polarisation camera (MER2-502-79U3M
 ### Main technology
 * Using CUDA to solve mosaic images, real-time solution display can be achieved.
 * With multi-threading, pictures can be displayed and saved at the same time.
-* All CUDA-based DLL and LIB files have been packaged and uploaded to [Baidu Cloud Drive](https://pan.baidu.com/s/1X-UeQvD5x_L5xcyZwGUeUA?pwd=4grk ) (extraction code: 4grk). Please place the DLL files in the same directory as the generated executable (.exe) file.
+* All CUDA-based DLL and LIB files have been packaged and uploaded to [Baidu Cloud Drive](https://pan.baidu.com/s/1qrs5XHToBmhPT8ikiA9_NA?pwd=f956). Please place the DLL files in the same directory as the generated executable (.exe) file.
 ---
 ### Contact
 If you have any questions, please contact me at my email 907151833@qq.com.
