@@ -8,7 +8,6 @@ Demosaic raw polarization image captured with a polarization sensor (e.g., [IMX2
 ![MyPicture](https://raw.githubusercontent.com/Gutsfig/DaHeng_PolCamera/main/img/masaike.jpg)
 ## Introduce
 This is a secondary development based on the polarisation camera (MER2-502-79U3M POL), the main functions are real-time display I0, I45, I90, I35, S0, S1, S2, DoLP, AoLP, and real-time saving function.
----
 ### Development environment
 * MSCV2019
 * opencv4.9
